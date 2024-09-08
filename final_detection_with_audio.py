@@ -27,9 +27,10 @@ engine = pyttsx3.init()
 # Load YOLO model
 model_path = "CV_50/train/weights/best.pt"
 model = YOLO(model_path)
+sign_model = YOLO("Traffic_Sign_Model/train/weights/best.pt")
 
 # Open the video file (replace 'test1.mkv' with the actual path to your video file)
-video_path = 'test_speed_limit.mp4'
+video_path = 'test_traffic_sign_vid.mp4'
 cap = cv2.VideoCapture(video_path)
 
 # Get video properties
@@ -102,8 +103,29 @@ while True:
                     audio_file = save_speech("Arrow detected", audio_counter)
                     audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
                 elif class_name == "TRAFFIC LIGHT":
-                    audio_file = save_speech("Traffic light detected", audio_counter)
-                    audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
+                    sign_results = sign_model(cropped_bounding_box)[0]
+                    #print(sign_results)
+                    # Process the output from the second model (sign_model)
+                    for sign_result in sign_results.boxes.data.tolist():
+                        # Process the bounding box from the second model
+                        sign_x1, sign_y1, sign_x2, sign_y2, sign_score, sign_class_id = sign_result
+
+                        if sign_score > 0.5:  # Set a confidence threshold
+                            # Identify the color or sign based on the sign_class_id
+                            if sign_class_id == 0:
+                                detected_color = "Green"
+                            elif sign_class_id == 1:
+                                detected_color = "Red"
+                            elif sign_class_id == 2:
+                                detected_color = "Yellow"
+
+                            # Write the detected color above the bounding box
+                            cv2.putText(frame, f"Traffic Light: {detected_color}", (int(x1), int(y1 - 25)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+                            #print(detected_color)
+                            # Generate speech for the detected color
+                            audio_file = save_speech(f"Traffic light detected: {detected_color}", audio_counter)
+                            audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
                 elif class_name == "STOP SIGN":
                     audio_file = save_speech("Stop sign detected", audio_counter)
                     audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
