@@ -4,23 +4,7 @@ import cv2
 import pyttsx3
 import moviepy.editor as mpe
 import time
-import pytesseract
-
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-# Function to recognize speed limit from cropped image using Tesseract
-def recognize_speed_limit(cropped_image):
-    # Convert image to grayscale (for better OCR results)
-    gray_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
-
-    # Use Tesseract to extract text
-    config = '--psm 6 digits'
-    speed_limit_text = pytesseract.image_to_string(gray_image, config=config)
-
-    # Extract only digits (numbers) as speed limit
-    speed_limit = ''.join(filter(str.isdigit, speed_limit_text))
-
-    return speed_limit
-
+from speed_limit_classifier import classify_speed_limit
 # Initialize the text-to-speech engine
 engine = pyttsx3.init()
 
@@ -30,7 +14,7 @@ model = YOLO(model_path)
 sign_model = YOLO("Traffic_Sign_Model/train/weights/best.pt")
 
 # Open the video file (replace 'test1.mkv' with the actual path to your video file)
-video_path = 'test_traffic_sign_vid.mp4'
+video_path = 'test_speed_limit.mp4'
 cap = cv2.VideoCapture(video_path)
 
 # Get video properties
@@ -93,10 +77,20 @@ while True:
 
             # Put the class name on the bounding box
             class_name = results.names[int(class_id)].upper()
-            cv2.putText(frame, class_name, (int(x1), int(y1 - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
-            cropped_bounding_box = frame[int(y1):int(y2), int(x1):int(x2)]
 
+            cropped_bounding_box = frame[int(y1):int(y2), int(x1):int(x2)]
+            if class_name == "SPEED LIMIT":
+                # Recognize the speed limit using OCR
+                speed_limit = classify_speed_limit(cropped_bounding_box)
+                print("IDENTIFIED!!!!!!!", speed_limit)
+                if speed_limit:
+                    print("SPEED LIMIT IDENTIFIED:", speed_limit)
+                    # Update the bounding box label with the recognized speed limit
+                    cv2.putText(frame, f"Speed Limit: {speed_limit} km/h", (int(x1), int(y1 - 25)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+            else:
+                cv2.putText(frame, class_name, (int(x1), int(y1 - 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
             # If a new class is detected, save the speech
             if class_name != previously_detected:
                 if class_name == "ARROW":
@@ -130,9 +124,6 @@ while True:
                     audio_file = save_speech("Stop sign detected", audio_counter)
                     audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
                 elif class_name == "SPEED LIMIT":
-                    # Recognize the speed limit using OCR
-                    speed_limit = recognize_speed_limit(cropped_bounding_box)
-                    # If a valid speed limit is recognized, display it and save the audio
                     if speed_limit:
                         print("SPEED LIMIT IDENTIFIED:", speed_limit)
                         # Update the bounding box label with the recognized speed limit
