@@ -4,7 +4,16 @@ import cv2
 import pyttsx3
 import moviepy.editor as mpe
 import time
-from speed_limit_classifier import classify_speed_limit
+from tensorflow import keras
+import numpy as np
+import easyocr
+
+# Create an OCR reader object
+reader = easyocr.Reader(['en'])
+
+#direction_model_path = 'EfficentModel'
+#direction_model = keras.models.load_model(direction_model_path, compile=False)
+
 # Initialize the text-to-speech engine
 engine = pyttsx3.init()
 
@@ -13,7 +22,6 @@ model_path = "CV_50/train/weights/best.pt"
 model = YOLO(model_path)
 sign_model = YOLO("Traffic_Sign_Model/train/weights/best.pt")
 
-# Open the video file (replace 'test1.mkv' with the actual path to your video file)
 video_path = 'test_speed_limit.mp4'
 cap = cv2.VideoCapture(video_path)
 
@@ -50,6 +58,15 @@ def save_speech(text, audio_counter):
     engine.save_to_file(text, audio_file)
     engine.runAndWait()
     return audio_file
+# Function to convert model output to direction
+def array2dir(array):
+    confidence_threshold = 0.8
+    if array[0][0] > confidence_threshold and array[0][0] > array[0][1] and array[0][0] > array[0][2]:
+        return "Left"
+    elif array[0][1] > confidence_threshold and array[0][1] > array[0][0] and array[0][1] > array[0][2]:
+        return "Right"
+    else:
+        return "Unknown!"
 
 # Start video processing
 print("Video processing started. Press 'q' to stop.")
@@ -81,13 +98,50 @@ while True:
             cropped_bounding_box = frame[int(y1):int(y2), int(x1):int(x2)]
             if class_name == "SPEED LIMIT":
                 # Recognize the speed limit using OCR
-                speed_limit = classify_speed_limit(cropped_bounding_box)
+                result = reader.readtext(cropped_bounding_box)
+                for detection in result:
+                    speed_limit = detection[1]
+
                 print("IDENTIFIED!!!!!!!", speed_limit)
                 if speed_limit:
                     print("SPEED LIMIT IDENTIFIED:", speed_limit)
                     # Update the bounding box label with the recognized speed limit
                     cv2.putText(frame, f"Speed Limit: {speed_limit} km/h", (int(x1), int(y1 - 25)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+
+            elif class_name == "ARROW":
+                input_frame = cv2.resize(cropped_bounding_box, (300, 300))
+
+                # Perform direction prediction
+                input_frame = np.expand_dims(input_frame, axis=0)
+                direction_output = direction_model.predict(input_frame)
+                # Convert model output to direction
+                direction = array2dir(direction_output)
+                print("ARROW IDENTIFIED:", direction)
+                # Update the bounding box label with the recognized speed limit
+                cv2.putText(frame, f"Direction: {direction}", (int(x1), int(y1 - 25)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+            elif class_name == "TRAFFIC LIGHT":
+                sign_results = sign_model(cropped_bounding_box)[0]
+                # print(sign_results)
+                # Process the output from the second model (sign_model)
+                for sign_result in sign_results.boxes.data.tolist():
+                    # Process the bounding box from the second model
+                    sign_x1, sign_y1, sign_x2, sign_y2, sign_score, sign_class_id = sign_result
+
+                    if sign_score > 0.5:  # Set a confidence threshold
+                        # Identify the color or sign based on the sign_class_id
+                        if sign_class_id == 0:
+                            detected_color = "Green"
+                        elif sign_class_id == 1:
+                            detected_color = "Red"
+                        elif sign_class_id == 2:
+                            detected_color = "Yellow"
+
+                        # Write the detected color above the bounding box
+                        cv2.putText(frame, f"Traffic Light: {detected_color}", (int(x1), int(y1 - 25)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+                        # print(detected_color)
             else:
                 cv2.putText(frame, class_name, (int(x1), int(y1 - 10)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
@@ -97,26 +151,10 @@ while True:
                     audio_file = save_speech("Arrow detected", audio_counter)
                     audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
                 elif class_name == "TRAFFIC LIGHT":
-                    sign_results = sign_model(cropped_bounding_box)[0]
-                    #print(sign_results)
-                    # Process the output from the second model (sign_model)
                     for sign_result in sign_results.boxes.data.tolist():
                         # Process the bounding box from the second model
                         sign_x1, sign_y1, sign_x2, sign_y2, sign_score, sign_class_id = sign_result
-
                         if sign_score > 0.5:  # Set a confidence threshold
-                            # Identify the color or sign based on the sign_class_id
-                            if sign_class_id == 0:
-                                detected_color = "Green"
-                            elif sign_class_id == 1:
-                                detected_color = "Red"
-                            elif sign_class_id == 2:
-                                detected_color = "Yellow"
-
-                            # Write the detected color above the bounding box
-                            cv2.putText(frame, f"Traffic Light: {detected_color}", (int(x1), int(y1 - 25)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
-                            #print(detected_color)
                             # Generate speech for the detected color
                             audio_file = save_speech(f"Traffic light detected: {detected_color}", audio_counter)
                             audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
@@ -125,10 +163,6 @@ while True:
                     audio_clips.append((audio_file, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000))
                 elif class_name == "SPEED LIMIT":
                     if speed_limit:
-                        print("SPEED LIMIT IDENTIFIED:", speed_limit)
-                        # Update the bounding box label with the recognized speed limit
-                        cv2.putText(frame, f"Speed Limit: {speed_limit} km/h", (int(x1), int(y1 - 25)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
                         # Generate speech for the recognized speed limit
                         audio_file = save_speech(f"Speed limit detected: {speed_limit} kilometers per hour",
                                                  audio_counter)
@@ -156,6 +190,7 @@ while True:
     out.write(frame)
 
     # Optionally, display the frame (you can comment this out if you don't want to show the frames)
+    #print(frame)
     cv2.imshow("YOLO Object Detection with Speech", frame)
 
     # Break the loop if 'q' key is pressed
