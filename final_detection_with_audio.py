@@ -22,7 +22,7 @@ model_path = "CV_50/train/weights/best.pt"
 model = YOLO(model_path)
 sign_model = YOLO("Traffic_Sign_Model/train/weights/best.pt")
 
-video_path = 'test_speed_limit.mp4'
+video_path = 'daivik_test.mp4'
 cap = cv2.VideoCapture(video_path)
 
 # Get video properties
@@ -31,7 +31,7 @@ frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 
 # Define the codec and create a VideoWriter object to save the output video (without audio for now)
-output_video_path = 'output_video.avi'  # Change the output path as needed
+output_video_path = 'output_video_daivik_test.avi'  # Change the output path as needed
 fourcc = cv2.VideoWriter_fourcc(*'XVID')  # You can also use other codecs like 'mp4v' for MP4
 out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height))
 
@@ -99,24 +99,31 @@ while True:
             if class_name == "SPEED LIMIT":
                 # Recognize the speed limit using OCR
                 result = reader.readtext(cropped_bounding_box)
+                speed_limit = None
+
                 for detection in result:
                     speed_limit = detection[1]
-
-                print("IDENTIFIED!!!!!!!", speed_limit)
-                if speed_limit:
-                    print("SPEED LIMIT IDENTIFIED:", speed_limit)
-                    # Update the bounding box label with the recognized speed limit
-                    cv2.putText(frame, f"Speed Limit: {speed_limit} km/h", (int(x1), int(y1 - 25)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+                    # Handle cases where OCR doesn't detect anything
+                    if speed_limit:
+                        print("SPEED LIMIT IDENTIFIED:", speed_limit)
+                        # Update the bounding box label with the recognized speed limit
+                        cv2.putText(frame, f"Speed Limit: {speed_limit} km/h", (int(x1), int(y1 - 25)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+                    else:
+                        # If no speed limit is detected, print or handle the case appropriately
+                        print("No speed limit detected by OCR")
+                        cv2.putText(frame, "Speed Limit: Not detected", (int(x1), int(y1 - 25)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
 
             elif class_name == "ARROW":
                 input_frame = cv2.resize(cropped_bounding_box, (300, 300))
 
                 # Perform direction prediction
                 input_frame = np.expand_dims(input_frame, axis=0)
-                direction_output = direction_model.predict(input_frame)
+                #direction_output = direction_model.predict(input_frame)
                 # Convert model output to direction
-                direction = array2dir(direction_output)
+                #direction = array2dir(direction_output)
+                direction = "Unknown"
                 print("ARROW IDENTIFIED:", direction)
                 # Update the bounding box label with the recognized speed limit
                 cv2.putText(frame, f"Direction: {direction}", (int(x1), int(y1 - 25)),
